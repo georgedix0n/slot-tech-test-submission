@@ -8,7 +8,7 @@
 
 ## The Test 
 
-Given the simple 3 reel slot framework provided extend the functionality to evalue and show wins. A win in considered to be a matching symbol displayed on each reel, multiple wins can be display at a time on each result.
+Given the simple 3 reel slot framework provided extend the functionality to evaluate and show wins. A win is considered to be a matching symbol displayed on each reel, multiple wins can be displayed at a time on each result.
 
 Follow the framework structure where possible using ES6 and pixi.js
 
@@ -39,7 +39,7 @@ We will be looking for:
 
 ## Submission 
 
-Email as an attachment or a link the git bundled repository showing your commit history with all your commits on the master branch: 
+Email as an attachment or a link to the git bundled repository showing your commit history with all your commits on the master branch: 
 
 ```
 git bundle create <anything>.bundle --all --branches 
