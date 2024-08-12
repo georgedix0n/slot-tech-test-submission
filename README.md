@@ -25,7 +25,7 @@ Please see [JSDoc Documentation](docs/index.html) for more information.
 
 ## Things I would do with more time
 
-* Implement jest testing with CI to validate all parameters of each component class. At the minute, I have assumed that the input is of correct form, this of course would be bad practice in a continually changing production environment, but somewhat unnecessary for a static test.
+* Implement jest testing with CI to validate all parameters of each component class. At the minute, I have assumed that the input is of correct form, this of course would be bad practice in a continually changing production environment, but somewhat unnecessary for a static test, given the time constraints.
 * Improve error handling, using a centralised error handling class, with more specific errors. At the minute all errors are simply logged and tries to maintain a working, albeit more basic, application where possible. Main point of improvement is scoring system, many things can go wrong in that logic and each possibility should be accounted for.
 * Add some randomness back into the speed of the clouds, very uniform at the minute.
 * Improve win menu UI significantly, very low quality as is.
@@ -36,7 +36,6 @@ Please see [JSDoc Documentation](docs/index.html) for more information.
 
 
 
-<hr></hr>
 ## The Test 
 
 Given the simple 3 reel slot framework provided extend the functionality to evaluate and show wins. A win is considered to be a matching symbol displayed on each reel, multiple wins can be displayed at a time on each result.
