@@ -6,7 +6,10 @@
     "module": "index.js",
     "scripts": {
         "build": "rollup -c",
-        "doc": "jsdoc -c jsdoc.config.json"
+        "doc": "jsdoc -c jsdoc.config.json",
+        "lint": "eslint src/**/*.js",
+        "lint-fix": "eslint src/**/*.js --fix",
+        "format": "prettier --write 'src/**/*.js'"
     },
     "source": true,
     "browserslist": [
@@ -15,12 +18,15 @@
         "IE 11"
     ],
     "devDependencies": {
-        "eslint": "^6.8.0",
-        "eslint-plugin-jsdoc": "^15.9.2",
-        "jsdoc": "~3.6.3",
-        "rollup": "^4.9.5",
+        "@rollup/plugin-commonjs": "^25.0.7",
         "@rollup/plugin-node-resolve": "^15.2.3",
-        "@rollup/plugin-commonjs": "^25.0.7"
+        "eslint": "^8.48.0",
+        "eslint-plugin-jsdoc": "^50.0.1",
+        "jsdoc": "^4.0.3",
+        "prettier": "^3.0.0",  
+        "eslint-plugin-prettier": "^4.0.0",
+        "eslint-config-prettier": "^8.0.0",
+        "rollup": "^4.9.5"
     },
     "dependencies": {
         "gsap": "2.1.3",

@@ -1,0 +1,59 @@
+{
+    "env": {
+        "browser": true,
+        "es6": true
+    },
+    "extends": [
+        "eslint:recommended",
+        "plugin:prettier/recommended"
+    ],
+    "globals": {
+        "Atomics": "readonly",
+        "SharedArrayBuffer": "readonly"
+    },
+    "parserOptions": {
+        "ecmaVersion": 2018,
+        "sourceType": "module"
+    },
+    "rules": {
+        "indent": [
+            "error",
+            "tab"
+        ],
+        "linebreak-style": [
+            "error",
+            "windows"
+        ],
+        "quotes": [
+            "error",
+            "double"
+        ],
+        "semi": [
+            "error",
+            "always"
+        ],
+        "prefer-arrow-callback": [
+            "error"
+        ],
+        "prefer-const": [
+            "error"
+        ],
+        "camelcase": [
+            "error",
+            {
+                "properties": "always"
+            }
+        ],
+        "prettier/prettier": ["error", {
+            "printWidth": 80,
+            "tabWidth": 2,
+            "singleQuote": true,
+            "trailingComma": "all",
+            "bracketSpacing": true,
+            "jsxBracketSameLine": false,
+            "semi": true,
+            "useTabs": false,
+            "endOfLine": "lf"
+        }]
+    }
+}
