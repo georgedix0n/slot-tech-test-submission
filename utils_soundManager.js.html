@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>JSDoc: Home</title>
+    <title>JSDoc: Source: utils/soundManager.js</title>
 
     <script src="scripts/prettify/prettify.js"> </script>
     <script src="scripts/prettify/lang-css.js"> </script>
@@ -17,32 +17,64 @@
 
 <div id="main">
 
-    <h1 class="page-title">Home</h1>
+    <h1 class="page-title">Source: utils/soundManager.js</h1>
 
     
 
 
 
     
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import { Howl } from "howler";
 
+/**
+ * SoundManager class
+ */
+class SoundManager {
+	constructor() {
+		this._sounds = {};
+	}
 
-    <h3> </h3>
+	/**
+	 * Load a sound asset
+	 *
+	 * @param {string} key - the key to reference the sound
+	 * @param {string} src - the source file path of the sound
+	 */
+	loadSound(key, src) {
+		this._sounds[key] = new Howl({ src: [src], format: "wav" });
+	}
 
+	/**
+	 * Play a sound by its key
+	 *
+	 * @param {string} key - the key of the sound to play
+	 */
+	playSound(key) {
+		const sound = this._sounds[key];
+		if (sound) {
+			sound.play();
+		}
+	}
 
+	/**
+	 * Stop a sound by its key
+	 *
+	 * @param {string} key - the key of the sound to stop
+	 */
+	stopSound(key) {
+		const sound = this._sounds[key];
+		if (sound) {
+			sound.stop();
+		}
+	}
+}
 
-
-
-
-
-
-
-
-    
-
-
-
-
-
+export const soundManager = new SoundManager();
+</code></pre>
+        </article>
+    </section>
 
 
 
