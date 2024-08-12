@@ -31,13 +31,12 @@ export class ScoreManager {
 			const commonSymbolsMap = this._generateMatchingSymbolsMap(reels);
 
 			if (commonSymbolsMap.size > 0) {
+				soundManager.playSound("win");
 				const animationPromises = [];
 				for (const [
 					key,
 					indiciesWithMatchingSymbol,
 				] of commonSymbolsMap.entries()) {
-					soundManager.playSound("win");
-
 					for (let i = 0; i < indiciesWithMatchingSymbol.length; i++) {
 						const index = indiciesWithMatchingSymbol[i];
 						const reelMatchingIndex = index[0];
@@ -103,8 +102,8 @@ export class ScoreManager {
 				firstReelSymbolIndex < firstReel.length;
 				firstReelSymbolIndex++
 			) {
-				const testSymbolId = firstReel[firstReelSymbolIndex]._id;
-				const testSymbolValue = firstReel[firstReelSymbolIndex]._value;
+				const testSymbolId = firstReel[firstReelSymbolIndex]._id; ///add errors for id checking
+				const testSymbolValue = firstReel[firstReelSymbolIndex]._value; //add errors for value checking
 
 				let symbolFoundInAllReels = true;
 				const matchingSymbolIndicies = []; //temp storage of indicies
