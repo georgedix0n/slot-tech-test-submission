@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: utils/scoreManager.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: utils/scoreManager.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import { soundManager } from "../utils/soundManager.js";
+
+/**
+ * Manages the scoring logic in the game based on the reels and multiplier combinations.
+ */
+export class ScoreManager {
+	/**
+	 * Creates an instance of ScoreManager.
+	 *
+	 * @param {ReelsManager} reelsManager - An instance of ReelsManager responsible for managing the reels.
+	 * @param {Array&lt;{indicies: number[][], value: number}>} multiplierCombinations - An array of multiplier combinations where each combination includes indices and a multiplier value.
+	 */
+	constructor(reelsManager, multiplierCombinations) {
+		this.score = 0;
+		this._reelsManager = reelsManager;
+		this._multiplierCombinations = multiplierCombinations;
+	}
+
+	/**
+	 * Checks for common symbols across all reels and updates the score accordingly.
+	 *
+	 * @async
+	 * @returns {Promise&lt;void>}
+	 */
+	async checkScore() {
+		try {
+			const reels = this._reelsManager._reels.map((reel) =>
+				reel.getActiveSymbols(),
+			); //strips off buffer symbols
+			///ADD error handling for change in dim reels
+			const commonSymbolsMap = this._generateMatchingSymbolsMap(reels);
+
+			if (commonSymbolsMap.size > 0) {
+				soundManager.playSound("win");
+				const animationPromises = [];
+				for (const [
+					key,
+					indiciesWithMatchingSymbol,
+				] of commonSymbolsMap.entries()) {
+					for (let i = 0; i &lt; indiciesWithMatchingSymbol.length; i++) {
+						const index = indiciesWithMatchingSymbol[i];
+						const reelMatchingIndex = index[0];
+						const symbolMatchingIndex = index[1];
+						const matchedSymbol = reels[reelMatchingIndex][symbolMatchingIndex];
+						animationPromises.push(matchedSymbol.play());
+					}
+
+					const symbolIdValuePair = JSON.parse(key);
+					const matchedSymbolValue = symbolIdValuePair[1];
+
+					let newScore = matchedSymbolValue;
+
+					const indiciesWithMatchingSymbolSet = new Set(
+						indiciesWithMatchingSymbol.map((subArray) =>
+							JSON.stringify(subArray),
+						),
+					);
+
+					// Check for multiplier:
+					for (let j = 0; j &lt; this._multiplierCombinations.length; j++) {
+						const multiplierCombination = this._multiplierCombinations[j];
+						const multiplierIndiciesSet = new Set(
+							multiplierCombination.indicies.map((subArray) =>
+								JSON.stringify(subArray),
+							),
+						);
+
+						const allPresent = [...multiplierIndiciesSet].every((subArray) =>
+							indiciesWithMatchingSymbolSet.has(subArray),
+						);
+						if (allPresent) {
+							newScore *= multiplierCombination.value;
+						}
+					}
+					this.score += newScore;
+				}
+				await Promise.all(animationPromises);
+			}
+
+			if (this.score > 99999999) {
+				this.score = 0;
+			}
+		} catch (error) {
+			console.error("Error during score check:", error);
+		}
+	}
+
+	/**
+	 * Generates a map of common symbols across all reels with their indices.
+	 *
+	 * @param {Array&lt;Symbol[]>} reels - An array of reels where each reel is an array of symbols.
+	 * @returns {Map&lt;string, number[][]>} A map where the key is a stringified symbol [id, value] and the value is an array of indices where the symbol is found across reels.
+	 */
+	_generateMatchingSymbolsMap(reels) {
+		try {
+			// looks for common symbols across all reels, stores id /indicies in map
+			const firstReel = reels[0];
+			const symbolIndiciesMap = new Map(); //to be filled with symbol [id, value] pairs as key and values of corresponding indicies across reels for matched symbols
+
+			for (
+				let firstReelSymbolIndex = 0;
+				firstReelSymbolIndex &lt; firstReel.length;
+				firstReelSymbolIndex++
+			) {
+				const testSymbolId = firstReel[firstReelSymbolIndex]._id; ///add errors for id checking
+				const testSymbolValue = firstReel[firstReelSymbolIndex]._value; //add errors for value checking
+
+				let symbolFoundInAllReels = true;
+				const matchingSymbolIndicies = []; //temp storage of indicies
+				const symbolKey = JSON.stringify([testSymbolId, testSymbolValue]);
+				if (symbolIndiciesMap.has(symbolKey)) {
+					//if duplicate element on first reel, skip as all indicies will have already been accounted for
+					continue;
+				}
+
+				for (let reelIndex = 0; reelIndex &lt; reels.length; reelIndex++) {
+					const reel = reels[reelIndex];
+					let symbolFoundInCurrentReel = false;
+
+					for (let symbolIndex = 0; symbolIndex &lt; reel.length; symbolIndex++) {
+						const symbol = reel[symbolIndex];
+						if (symbol._id === testSymbolId) {
+							matchingSymbolIndicies.push([reelIndex, symbolIndex]);
+							symbolFoundInCurrentReel = true;
+						}
+					}
+
+					if (!symbolFoundInCurrentReel) {
+						symbolFoundInAllReels = false;
+						break; // Exit the outer loop if the symbol is not found in the current reel
+					}
+				}
+
+				if (symbolFoundInAllReels) {
+					symbolIndiciesMap.set(symbolKey, matchingSymbolIndicies);
+				}
+			}
+			return symbolIndiciesMap;
+		} catch (error) {
+			console.error("Error generating matching symbols map:", error);
+			return new Map();
+		}
+	}
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="Base.html">Base</a></li><li><a href="Button.html">Button</a></li><li><a href="Core.html">Core</a></li><li><a href="Reel.html">Reel</a></li><li><a href="ReelManager.html">ReelManager</a></li><li><a href="Renderer.html">Renderer</a></li><li><a href="ScoreCounter.html">ScoreCounter</a></li><li><a href="ScoreManager.html">ScoreManager</a></li><li><a href="Sky.html">Sky</a></li><li><a href="SoundManager.html">SoundManager</a></li><li><a href="Symbol.html">Symbol</a></li><li><a href="SymbolStore.html">SymbolStore</a></li><li><a href="Timer.html">Timer</a></li><li><a href="TimerManager.html">TimerManager</a></li><li><a href="WinMenu.html">WinMenu</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Mon Aug 12 2024 10:10:52 GMT+0100 (British Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
