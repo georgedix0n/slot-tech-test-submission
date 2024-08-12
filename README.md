@@ -20,8 +20,7 @@ Using ES6 and pixi js, implemented the following:
 * Added a reset score button, somewhat unnecessary but maintains symmetry in button UI.
 
 
-Please see JSDoc Documentation for more information:
-<iframe src="docs/index.html" width="100%" height="600px"></iframe>
+Please see [JSDoc Documentation](./DOCS.md) for more information:
 
 
 ## Things I would do with more time
