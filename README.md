@@ -20,9 +20,7 @@ Using ES6 and pixi js, implemented the following:
 * Added a reset score button, somewhat unnecessary but maintains symmetry in button UI.
 
 
-Please see [JSDoc Documentation](./docs/index.html) for more information:
-
-<a href="./docs/index.html" target="_blank">View the full documentation</a>
+Please see [JSDoc Documentation](https://georgedix0n.github.io/slot-tech-test-submission/index.html) for more information:
 
 
 
