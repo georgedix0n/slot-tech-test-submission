@@ -27,7 +27,7 @@ Please see [JSDoc Documentation](https://georgedix0n.github.io/slot-tech-test-su
 ## Things I would do with more time
 
 * Implement jest testing with CI to validate all parameters of each component class. At the minute, I have assumed that the input is of correct form, this of course would be bad practice in a continually changing production environment, but somewhat unnecessary for a static test, given the time constraints.
-* Improve error handling, using a centralised error handling class, with more specific errors. At the minute all errors are simply logged and tries to maintain a working, albeit more basic, application where possible. Main point of improvement is scoring system, many things can go wrong in that logic and each possibility should be accounted for.
+* Improve error handling, using a centralised error handling class, with more specific errors. At the minute all errors are simply logged and tries to maintain a working, albeit more basic, application where possible. Main point of improvement is scoring system, many things can go wrong in that logic and each possibility should be accounted for, but I am out of time.
 * Add some randomness back into the speed of the clouds, very uniform at the minute.
 * Improve win menu UI significantly, very low quality as is.
 * Fix win animation bug, not always showing on screen even when triggering (beyond scope).
