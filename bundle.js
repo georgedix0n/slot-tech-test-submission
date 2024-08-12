@@ -1900,7 +1900,7 @@
 
   var slicy = function slicy(arrLike, offset) {
       var arr = [];
-      for (var i = offset || 0, j = 0; i < arrLike.length; i += 1, j += 1) {
+      for (var i = offset, j = 0; i < arrLike.length; i += 1, j += 1) {
           arr[j] = arrLike[i];
       }
       return arr;
@@ -2796,7 +2796,10 @@
       if (typeof window !== 'undefined' && obj === window) {
           return '{ [object Window] }';
       }
-      if (obj === commonjsGlobal) {
+      if (
+          (typeof globalThis !== 'undefined' && obj === globalThis)
+          || (typeof commonjsGlobal !== 'undefined' && obj === commonjsGlobal)
+      ) {
           return '{ [object globalThis] }';
       }
       if (!isDate(obj) && !isRegExp$1(obj)) {
@@ -3347,6 +3350,10 @@
       }
   };
 
+  var limit = 1024;
+
+  /* eslint operator-linebreak: [2, "before"] */
+
   var encode = function encode(str, defaultEncoder, charset, kind, format) {
       // This code was originally written by Brian White (mscdex) for the io.js core querystring library.
       // It has been adapted here for stricter adherence to RFC 3986
@@ -3368,45 +3375,54 @@
       }
 
       var out = '';
-      for (var i = 0; i < string.length; ++i) {
-          var c = string.charCodeAt(i);
+      for (var j = 0; j < string.length; j += limit) {
+          var segment = string.length >= limit ? string.slice(j, j + limit) : string;
+          var arr = [];
 
-          if (
-              c === 0x2D // -
-              || c === 0x2E // .
-              || c === 0x5F // _
-              || c === 0x7E // ~
-              || (c >= 0x30 && c <= 0x39) // 0-9
-              || (c >= 0x41 && c <= 0x5A) // a-z
-              || (c >= 0x61 && c <= 0x7A) // A-Z
-              || (format === formats$3.RFC1738 && (c === 0x28 || c === 0x29)) // ( )
-          ) {
-              out += string.charAt(i);
-              continue;
+          for (var i = 0; i < segment.length; ++i) {
+              var c = segment.charCodeAt(i);
+              if (
+                  c === 0x2D // -
+                  || c === 0x2E // .
+                  || c === 0x5F // _
+                  || c === 0x7E // ~
+                  || (c >= 0x30 && c <= 0x39) // 0-9
+                  || (c >= 0x41 && c <= 0x5A) // a-z
+                  || (c >= 0x61 && c <= 0x7A) // A-Z
+                  || (format === formats$3.RFC1738 && (c === 0x28 || c === 0x29)) // ( )
+              ) {
+                  arr[arr.length] = segment.charAt(i);
+                  continue;
+              }
+
+              if (c < 0x80) {
+                  arr[arr.length] = hexTable[c];
+                  continue;
+              }
+
+              if (c < 0x800) {
+                  arr[arr.length] = hexTable[0xC0 | (c >> 6)]
+                      + hexTable[0x80 | (c & 0x3F)];
+                  continue;
+              }
+
+              if (c < 0xD800 || c >= 0xE000) {
+                  arr[arr.length] = hexTable[0xE0 | (c >> 12)]
+                      + hexTable[0x80 | ((c >> 6) & 0x3F)]
+                      + hexTable[0x80 | (c & 0x3F)];
+                  continue;
+              }
+
+              i += 1;
+              c = 0x10000 + (((c & 0x3FF) << 10) | (segment.charCodeAt(i) & 0x3FF));
+
+              arr[arr.length] = hexTable[0xF0 | (c >> 18)]
+                  + hexTable[0x80 | ((c >> 12) & 0x3F)]
+                  + hexTable[0x80 | ((c >> 6) & 0x3F)]
+                  + hexTable[0x80 | (c & 0x3F)];
           }
 
-          if (c < 0x80) {
-              out = out + hexTable[c];
-              continue;
-          }
-
-          if (c < 0x800) {
-              out = out + (hexTable[0xC0 | (c >> 6)] + hexTable[0x80 | (c & 0x3F)]);
-              continue;
-          }
-
-          if (c < 0xD800 || c >= 0xE000) {
-              out = out + (hexTable[0xE0 | (c >> 12)] + hexTable[0x80 | ((c >> 6) & 0x3F)] + hexTable[0x80 | (c & 0x3F)]);
-              continue;
-          }
-
-          i += 1;
-          c = 0x10000 + (((c & 0x3FF) << 10) | (string.charCodeAt(i) & 0x3FF));
-          /* eslint operator-linebreak: [2, "before"] */
-          out += hexTable[0xF0 | (c >> 18)]
-              + hexTable[0x80 | ((c >> 12) & 0x3F)]
-              + hexTable[0x80 | ((c >> 6) & 0x3F)]
-              + hexTable[0x80 | (c & 0x3F)];
+          out += arr.join('');
       }
 
       return out;
@@ -3840,7 +3856,7 @@
       charset: 'utf-8',
       charsetSentinel: false,
       comma: false,
-      decodeDotInKeys: true,
+      decodeDotInKeys: false,
       decoder: utils.decode,
       delimiter: '&',
       depth: 5,
@@ -3850,6 +3866,7 @@
       parameterLimit: 1000,
       parseArrays: true,
       plainObjects: false,
+      strictDepth: false,
       strictNullHandling: false
   };
 
@@ -3881,6 +3898,7 @@
       var obj = { __proto__: null };
 
       var cleanStr = options.ignoreQueryPrefix ? str.replace(/^\?/, '') : str;
+      cleanStr = cleanStr.replace(/%5B/gi, '[').replace(/%5D/gi, ']');
       var limit = options.parameterLimit === Infinity ? undefined : options.parameterLimit;
       var parts = cleanStr.split(options.delimiter, limit);
       var skipIndex = -1; // Keep track of where the utf8 sentinel was found
@@ -3951,7 +3969,9 @@
           var root = chain[i];
 
           if (root === '[]' && options.parseArrays) {
-              obj = options.allowEmptyArrays && leaf === '' ? [] : [].concat(leaf);
+              obj = options.allowEmptyArrays && (leaf === '' || (options.strictNullHandling && leaf === null))
+                  ? []
+                  : [].concat(leaf);
           } else {
               obj = options.plainObjects ? Object.create(null) : {};
               var cleanRoot = root.charAt(0) === '[' && root.charAt(root.length - 1) === ']' ? root.slice(1, -1) : root;
@@ -4024,9 +4044,12 @@
           keys.push(segment[1]);
       }
 
-      // If there's a remainder, just add whatever is left
+      // If there's a remainder, check strictDepth option for throw, else just add whatever is left
 
       if (segment) {
+          if (options.strictDepth === true) {
+              throw new RangeError('Input depth exceeded depth option of ' + options.depth + ' and strictDepth is true');
+          }
           keys.push('[' + key.slice(segment.index) + ']');
       }
 
@@ -4083,6 +4106,7 @@
           parameterLimit: typeof opts.parameterLimit === 'number' ? opts.parameterLimit : defaults.parameterLimit,
           parseArrays: opts.parseArrays !== false,
           plainObjects: typeof opts.plainObjects === 'boolean' ? opts.plainObjects : defaults.plainObjects,
+          strictDepth: typeof opts.strictDepth === 'boolean' ? !!opts.strictDepth : defaults.strictDepth,
           strictNullHandling: typeof opts.strictNullHandling === 'boolean' ? opts.strictNullHandling : defaults.strictNullHandling
       };
   };
@@ -4967,7 +4991,6 @@ Deprecated since v${version}`), console.warn(stack))), warnings[message] = !0;
                 continue;
               }
             }
-            allowAboveRoot && (res.length > 0 ? res += "/.." : res = "..", lastSegmentLength = 2);
           } else
             res.length > 0 ? res += `/${path2.slice(lastSlash + 1, i)}` : res = path2.slice(lastSlash + 1, i), lastSegmentLength = i - lastSlash - 1;
         lastSlash = i, dots = 0;
@@ -5054,7 +5077,7 @@ Deprecated since v${version}`), console.warn(stack))), warnings[message] = !0;
       const isAbsolute = path2.startsWith("/");
       this.hasProtocol(path2) && (protocol = this.rootname(path2), path2 = path2.slice(protocol.length));
       const trailingSeparator = path2.endsWith("/");
-      return path2 = normalizeStringPosix(path2, !1), path2.length > 0 && trailingSeparator && (path2 += "/"), isAbsolute ? `/${path2}` : protocol + path2;
+      return path2 = normalizeStringPosix(path2), path2.length > 0 && trailingSeparator && (path2 += "/"), isAbsolute ? `/${path2}` : protocol + path2;
     },
     /**
      * Determines if path is an absolute path.
@@ -12180,7 +12203,7 @@ void main(void)
      */
     run(options) {
       const { renderer } = this;
-      renderer.runners.init.emit(renderer.options), options.hello && console.log(`PixiJS 7.4.0 - ${renderer.rendererLogId} - https://pixijs.com`), renderer.resize(renderer.screen.width, renderer.screen.height);
+      renderer.runners.init.emit(renderer.options), options.hello && console.log(`PixiJS 7.4.2 - ${renderer.rendererLogId} - https://pixijs.com`), renderer.resize(renderer.screen.width, renderer.screen.height);
     }
     destroy() {
     }
@@ -14710,7 +14733,7 @@ void main(void)
     }
   }
 
-  const VERSION = "7.4.0";
+  const VERSION = "7.4.2";
 
   class Bounds {
     constructor() {
@@ -19752,9 +19775,9 @@ ${e}`);
 })();
 `;
   let WORKER_URL$1 = null;
-  let WorkerInstance$1 = class WorkerInstance extends Worker {
+  let WorkerInstance$1 = class WorkerInstance {
     constructor() {
-      WORKER_URL$1 || (WORKER_URL$1 = URL.createObjectURL(new Blob([WORKER_CODE$1], { type: "application/javascript" }))), super(WORKER_URL$1);
+      WORKER_URL$1 || (WORKER_URL$1 = URL.createObjectURL(new Blob([WORKER_CODE$1], { type: "application/javascript" }))), this.worker = new Worker(WORKER_URL$1);
     }
   };
   WorkerInstance$1.revokeObjectURL = function() {
@@ -19789,9 +19812,9 @@ ${e}`);
 })();
 `;
   let WORKER_URL = null;
-  class WorkerInstance extends Worker {
+  class WorkerInstance {
     constructor() {
-      WORKER_URL || (WORKER_URL = URL.createObjectURL(new Blob([WORKER_CODE], { type: "application/javascript" }))), super(WORKER_URL);
+      WORKER_URL || (WORKER_URL = URL.createObjectURL(new Blob([WORKER_CODE], { type: "application/javascript" }))), this.worker = new Worker(WORKER_URL);
     }
   }
   WorkerInstance.revokeObjectURL = function() {
@@ -19805,7 +19828,7 @@ ${e}`);
     }
     isImageBitmapSupported() {
       return this._isImageBitmapSupported !== void 0 ? this._isImageBitmapSupported : (this._isImageBitmapSupported = new Promise((resolve) => {
-        const worker = new WorkerInstance$1();
+        const { worker } = new WorkerInstance$1();
         worker.addEventListener("message", (event) => {
           worker.terminate(), WorkerInstance$1.revokeObjectURL(), resolve(event.data);
         });
@@ -19820,7 +19843,7 @@ ${e}`);
     getWorker() {
       MAX_WORKERS === void 0 && (MAX_WORKERS = navigator.hardwareConcurrency || 4);
       let worker = this.workerPool.pop();
-      return !worker && this._createdWorkers < MAX_WORKERS && (this._createdWorkers++, worker = new WorkerInstance(), worker.addEventListener("message", (event) => {
+      return !worker && this._createdWorkers < MAX_WORKERS && (this._createdWorkers++, worker = new WorkerInstance().worker, worker.addEventListener("message", (event) => {
         this.complete(event.data), this.returnWorker(event.target), this.next();
       })), worker;
     }
@@ -20371,7 +20394,7 @@ Please use Assets.add({ alias, src, data, format, loadParser }) instead.`), asse
     }
     buildResolvedAsset(formattedAsset, data) {
       const { aliases, data: assetData, loadParser, format } = data;
-      return (this._basePath || this._rootPath) && (formattedAsset.src = path.toAbsolute(formattedAsset.src, this._basePath, this._rootPath)), formattedAsset.alias = aliases ?? formattedAsset.alias ?? [formattedAsset.src], formattedAsset.src = this._appendDefaultSearchParams(formattedAsset.src), formattedAsset.data = { ...assetData || {}, ...formattedAsset.data }, formattedAsset.loadParser = loadParser ?? formattedAsset.loadParser, formattedAsset.format = format ?? path.extname(formattedAsset.src).slice(1), formattedAsset.srcs = formattedAsset.src, formattedAsset.name = formattedAsset.alias, formattedAsset;
+      return (this._basePath || this._rootPath) && (formattedAsset.src = path.toAbsolute(formattedAsset.src, this._basePath, this._rootPath)), formattedAsset.alias = aliases ?? formattedAsset.alias ?? [formattedAsset.src], formattedAsset.src = this._appendDefaultSearchParams(formattedAsset.src), formattedAsset.data = { ...assetData || {}, ...formattedAsset.data }, formattedAsset.loadParser = loadParser ?? formattedAsset.loadParser, formattedAsset.format = format ?? formattedAsset.format ?? path.extname(formattedAsset.src).slice(1), formattedAsset.srcs = formattedAsset.src, formattedAsset.name = formattedAsset.alias, formattedAsset;
     }
   }
 
@@ -20872,15 +20895,15 @@ Please use Assets.add({ alias, src, data, format, loadParser }) instead.`), asse
   let storedGl, extensions;
   function getCompressedTextureExtensions() {
     extensions = {
+      bptc: storedGl.getExtension("EXT_texture_compression_bptc"),
+      astc: storedGl.getExtension("WEBGL_compressed_texture_astc"),
+      etc: storedGl.getExtension("WEBGL_compressed_texture_etc"),
       s3tc: storedGl.getExtension("WEBGL_compressed_texture_s3tc"),
       s3tc_sRGB: storedGl.getExtension("WEBGL_compressed_texture_s3tc_srgb"),
       /* eslint-disable-line camelcase */
-      etc: storedGl.getExtension("WEBGL_compressed_texture_etc"),
-      etc1: storedGl.getExtension("WEBGL_compressed_texture_etc1"),
       pvrtc: storedGl.getExtension("WEBGL_compressed_texture_pvrtc") || storedGl.getExtension("WEBKIT_WEBGL_compressed_texture_pvrtc"),
-      atc: storedGl.getExtension("WEBGL_compressed_texture_atc"),
-      astc: storedGl.getExtension("WEBGL_compressed_texture_astc"),
-      bptc: storedGl.getExtension("EXT_texture_compression_bptc")
+      etc1: storedGl.getExtension("WEBGL_compressed_texture_etc1"),
+      atc: storedGl.getExtension("WEBGL_compressed_texture_atc")
     };
   }
   const detectCompressedTextures = {
@@ -21345,29 +21368,20 @@ Please use Assets.add({ alias, src, data, format, loadParser }) instead.`), asse
   };
   extensions$1.add(loadKTX);
 
-  const resolveCompressedTextureUrl = {
+  const knownFormats = ["s3tc", "s3tc_sRGB", "etc", "etc1", "pvrtc", "atc", "astc", "bptc"], resolveCompressedTextureUrl = {
     extension: ExtensionType.ResolveParser,
     test: (value) => {
       const extension = path.extname(value).slice(1);
       return ["basis", "ktx", "dds"].includes(extension);
     },
     parse: (value) => {
-      const extension = path.extname(value).slice(1);
-      if (extension === "ktx") {
-        const extensions2 = [
-          ".s3tc.ktx",
-          ".s3tc_sRGB.ktx",
-          ".etc.ktx",
-          ".etc1.ktx",
-          ".pvrt.ktx",
-          ".atc.ktx",
-          ".astc.ktx",
-          ".bptc.ktx"
-        ];
-        if (extensions2.some((ext) => value.endsWith(ext)))
+      const parts = value.split("."), extension = parts.pop();
+      if (["ktx", "dds"].includes(extension)) {
+        const textureFormat = parts.pop();
+        if (knownFormats.includes(textureFormat))
           return {
             resolution: parseFloat(settings.RETINA_PREFIX.exec(value)?.[1] ?? "1"),
-            format: extensions2.find((ext) => value.endsWith(ext)),
+            format: textureFormat,
             src: value
           };
       }
@@ -26013,7 +26027,21 @@ void main(void)
   _Spritesheet.BATCH_SIZE = 1e3;
   let Spritesheet = _Spritesheet;
 
-  const validImages = ["jpg", "png", "jpeg", "avif", "webp"];
+  const validImages = [
+    "jpg",
+    "png",
+    "jpeg",
+    "avif",
+    "webp",
+    "s3tc",
+    "s3tc_sRGB",
+    "etc",
+    "etc1",
+    "pvrtc",
+    "atc",
+    "astc",
+    "bptc"
+  ];
   function getCacheableAssets(keys, asset, ignoreMultiPack) {
     const out = {};
     if (keys.forEach((key) => {
@@ -35842,448 +35870,453 @@ void main(void)\r
    * @class
    */
   class Renderer {
+  	/**
+  	 * @param {Renderer_initData} initData - Data used to initialise class variables
+  	 */
+  	constructor() {}
 
-      /**
-       * @param {Renderer_initData} initData - Data used to initialise class variables
-       */
-      constructor() {
-          
-      }
+  	/**
+  	 *
+  	 * @param {*} initData
+  	 */
+  	initialise(initData) {
+  		this._initVars(initData);
+  		this._setup();
+  	}
 
-      /**
-       * 
-       * @param {*} initData 
-       */
-      initialise(initData) {
-          this._initVars(initData);
-          this._setup();
-      }
+  	/**
+  	 *
+  	 */
+  	get app() {
+  		return this._pixi;
+  	}
 
-      /**
-       * 
-       */
-      get app() {
-          return this._pixi;
-      }
+  	/**
+  	 * The PIXI canvas element
+  	 *
+  	 * @readonly
+  	 * @member {HTMLCanvasElement}
+  	 * @returns {HTMLCanvasElement}
+  	 */
+  	get canvas() {
+  		return this._pixiRenderer.view;
+  	}
 
-      /**
-       * The PIXI canvas element
-       *
-       * @readonly
-       * @member {HTMLCanvasElement}
-       * @returns {HTMLCanvasElement}
-       */
-      get canvas() {
-          return this._pixiRenderer.view;
-      }
+  	/**
+  	 * Use to get access to pixi's stage
+  	 * @readonly
+  	 * @returns {PIXI.Container} Pixi stage
+  	 */
+  	get stage() {
+  		return this._pixi.stage;
+  	}
 
-      /**
-       * Use to get access to pixi's stage
-       * @readonly
-       * @returns {PIXI.Container} Pixi stage
-       */
-      get stage() {
-          return this._pixi.stage;
-      }
+  	/**
+  	 *
+  	 * @param {*} child
+  	 */
+  	addChild(child) {
+  		this._gameContainer.addChild(child);
+  	}
 
-      /**
-       * 
-       * @param {*} child 
-       */
-      addChild(child) {
-          this._gameContainer.addChild(child);
-      }
-      
-      /**
-       * Starts pixi render and resizes. Also starts requestAnimationFrame
-       *
-       */
-      start() {
-          this.browserResized();
-          TweenMax.ticker.useRAF(true);
-          TweenMax.ticker.addEventListener("tick", this._rafCalculateTimeDeltaMS, this);    
-      }
+  	/**
+  	 * Starts pixi render and resizes. Also starts requestAnimationFrame
+  	 *
+  	 */
+  	start() {
+  		this.browserResized();
+  		TweenMax.ticker.useRAF(true);
+  		TweenMax.ticker.addEventListener(
+  			"tick",
+  			this._rafCalculateTimeDeltaMS,
+  			this,
+  		);
+  	}
 
-      /**
-       * Called when a window.onresize is detected
-       */
-      browserResized() {
-          let { innerHeight, innerWidth } = window;
+  	/**
+  	 * Called when a window.onresize is detected
+  	 */
+  	browserResized() {
+  		let { innerHeight, innerWidth } = window;
 
+  		this._setLogicalToPhysicalRatio(innerWidth, innerHeight);
 
-          this._setLogicalToPhysicalRatio(innerWidth, innerHeight);
+  		const physicalWidth = Math.ceil(innerWidth * this._logicalToPhysicalRatio);
+  		const physicalHeight = Math.ceil(
+  			innerHeight * this._logicalToPhysicalRatio,
+  		);
 
-          const physicalWidth = Math.ceil(innerWidth * this._logicalToPhysicalRatio);
-          const physicalHeight = Math.ceil(innerHeight * this._logicalToPhysicalRatio);
+  		// now resize the canvas
+  		this._pixiRenderer.resize(physicalWidth, physicalHeight);
+  		this._resizeCanvasElementSize(innerWidth, innerHeight);
+  		this._calculateCanvasScale(physicalWidth, physicalHeight);
+  	}
 
-          // now resize the canvas
-          this._pixiRenderer.resize(physicalWidth, physicalHeight);
-          this._resizeCanvasElementSize(innerWidth, innerHeight);
-          this._calculateCanvasScale(physicalWidth, physicalHeight);
-      }
+  	/**
+  	 * Intialisation all renderer variables
+  	 *
+  	 * @private
+  	 * @param {Renderer_initData} initData - Data used to initialise class variables
+  	 */
+  	_initVars(initData) {
+  		const {
+  			antialias,
+  			backgroundAlpha,
+  			backgroundColour,
+  			gameContainerDiv,
+  			height,
+  			width,
+  		} = initData;
 
-      /**
-       * Intialisation all renderer variables
-       *
-       * @private
-       * @param {Renderer_initData} initData - Data used to initialise class variables
-       */
-      _initVars(initData) {
-          const { antialias, backgroundAlpha, backgroundColour, gameContainerDiv, height, width } = initData;
+  		// pixi vars
+  		this._antialias = antialias;
+  		this._backgroundAlpha = backgroundAlpha;
+  		this._backgroundColour = backgroundColour;
+  		this._gameContainerDiv = gameContainerDiv;
+  		this._initialWidth = width;
+  		this._initialHeight = height;
 
-          // pixi vars
-          this._antialias = antialias;
-          this._backgroundAlpha = backgroundAlpha;
-          this._backgroundColour = backgroundColour;
-          this._gameContainerDiv = gameContainerDiv;
-          this._initialWidth = width;
-          this._initialHeight = height;
+  		// class vars
+  		this._elementWidth = 0;
+  		this._elementHeight = 0;
+  		this._innerWidth = 0;
+  		this._innerHeight = 0;
+  		this._logicalToPhysicalRatio = 1;
+  		this._paused = false;
+  		this._speedModifier = 1;
+  		this._usingTweenMaxRAF = true;
 
-          // class vars
-          this._elementWidth = 0;
-          this._elementHeight = 0;
-          this._innerWidth = 0;
-          this._innerHeight = 0;
-          this._logicalToPhysicalRatio = 1;
-          this._paused = false;
-          this._speedModifier = 1;
-          this._usingTweenMaxRAF = true;
+  		this._pixi = null;
+  		this._pixiRenderer = null;
 
-          this._pixi = null;
-          this._pixiRenderer = null;
+  		this._lastTime = 0;
+  		this.TARGET_FPMS = 0.06;
+  		this.TIME_DELTA_CAP = 200;
+  	}
 
-          this._lastTime = 0;
-          this.TARGET_FPMS = 0.06;
-          this.TIME_DELTA_CAP = 200;
-      }
+  	/**
+  	 * Setup the renderer
+  	 *
+  	 * @private
+  	 */
+  	_setup() {
+  		this._create();
+  	}
 
-      /**
-       * Setup the renderer
-       *
-       * @private
-       */
-      _setup() {
-          this._create();
-      }
+  	/**
+  	 * Creates the renderer
+  	 *
+  	 * @private
+  	 */
+  	_create() {
+  		this._pixi = new Application({
+  			autoStart: true,
+  			background: this._backgroundColour,
+  			height: this._initialHeight,
+  			resolution: 1,
+  			width: this._initialWidth,
+  		});
+  		this._pixiRenderer = this._pixi.renderer;
 
-      /**
-       * Creates the renderer
-       *
-       * @private
-       */
-      _create() {
+  		this._pixiRenderer.view.style.position = "absolute";
+  		this._pixiRenderer.view.style.display = "block";
+  		this._pixiRenderer.view.style.margin = "auto";
+  		this._pixiRenderer.view.style.padding = "0px";
 
-          this._pixi = new Application({
-              autoStart: true,
-              background: this._backgroundColour,
-              height: this._initialHeight,
-              resolution: 1,
-              width: this._initialWidth
-          });
-          this._pixiRenderer = this._pixi.renderer;
+  		this._pixiRenderer.resize(window.innerWidth, window.innerHeight);
 
-          this._pixiRenderer.view.style.position = "absolute";
-          this._pixiRenderer.view.style.display = "block";
-          this._pixiRenderer.view.style.margin = "auto";
-          this._pixiRenderer.view.style.padding = "0px";
+  		if (this._gameContainerDiv) {
+  			this._gameContainerDiv.appendChild(this._pixi.view);
+  		}
 
-          this._pixiRenderer.resize(window.innerWidth, window.innerHeight);
+  		this._gameContainer = new Container();
+  		this._gameContainer.id = "gameContainer";
+  		this.stage.addChild(this._gameContainer);
 
-          if (this._gameContainerDiv) {
-              this._gameContainerDiv.appendChild(this._pixi.view);
-          }
+  		this._enablePixiInspector();
+  	}
 
-          this._gameContainer = new Container();
-          this._gameContainer.id = "gameContainer";
-          this.stage.addChild(this._gameContainer);
+  	/**
+  	 * Enable pixi inspector
+  	 *
+  	 * @private
+  	 */
+  	_enablePixiInspector() {
+  		// pixi inspector ^2.X.X
+  		/* eslint-disable-next-line */
+  		globalThis.__PIXI_APP__ = this._pixi;
 
-          this._enablePixiInspector();
-      }
+  		// pixi inspector ^0.X.X - legacy pixi inspector can probably be removed in future
+  		/* eslint-disable no-underscore-dangle */
+  		window.__PIXI_INSPECTOR_GLOBAL_HOOK__ &&
+  			window.__PIXI_INSPECTOR_GLOBAL_HOOK__.register({ PIXI: PIXI });
+  	}
 
-      /**
-       * Enable pixi inspector 
-       * 
-       * @private
-       */
-      _enablePixiInspector() {
-          // pixi inspector ^2.X.X
-          /* eslint-disable-next-line */
-          globalThis.__PIXI_APP__ = this._pixi;
+  	/**
+  	 * Checks to see if the window size has changed and triggers a resize if needed
+  	 *
+  	 * @private
+  	 */
+  	_checkForResize() {
+  		const { innerWidth, innerHeight } = window;
 
-          // pixi inspector ^0.X.X - legacy pixi inspector can probably be removed in future
-          /* eslint-disable no-underscore-dangle */
-          window.__PIXI_INSPECTOR_GLOBAL_HOOK__ && window.__PIXI_INSPECTOR_GLOBAL_HOOK__.register({ PIXI: PIXI });
-      
-      }
+  		if (innerWidth !== this._innerWidth || innerHeight !== this._innerHeight) {
+  			this._innerWidth = innerWidth;
+  			this._innerHeight = innerHeight;
+  			this.browserResized();
+  		}
+  	}
 
-      /**
-       * Checks to see if the window size has changed and triggers a resize if needed
-       *
-       * @private
-       */
-      _checkForResize() {
-          const { innerWidth, innerHeight } = window;
+  	/**
+  	 * Resizes the canvas element size, the underlying canvas dimensions are NOT affected
+  	 *
+  	 * @private
+  	 * @param {number} newWidth - the new display width of the canvas element
+  	 * @param {number} newHeight - the new display height of the canvas element
+  	 */
+  	_resizeCanvasElementSize(newWidth, newHeight) {
+  		this._elementWidth = Math.ceil(newWidth);
+  		this._elementHeight = Math.ceil(newHeight);
 
-          if (innerWidth !== this._innerWidth || innerHeight !== this._innerHeight) {
-              this._innerWidth = innerWidth;
-              this._innerHeight = innerHeight;
-              this.browserResized();
-          }
-      }
+  		this._pixiRenderer.view.style.width = this._elementWidth + "px";
+  		this._pixiRenderer.view.style.height = this._elementHeight + "px";
+  	}
 
-      /**
-       * Resizes the canvas element size, the underlying canvas dimensions are NOT affected
-       *
-       * @private
-       * @param {number} newWidth - the new display width of the canvas element
-       * @param {number} newHeight - the new display height of the canvas element
-       */
-      _resizeCanvasElementSize(newWidth, newHeight) {
-          this._elementWidth = Math.ceil(newWidth);
-          this._elementHeight = Math.ceil(newHeight);
+  	/**
+  	 * Sets up the Local to physical ratio to scale the game
+  	 * This will never go over the window.devicePixelRatio
+  	 * This is set up to stop the canvas being drawn bigger than it needs to be
+  	 *
+  	 * @private
+  	 * @param {number} width - window width
+  	 * @param {number} height - window height
+  	 */
+  	_setLogicalToPhysicalRatio(width, height) {
+  		const ratioW = (this._initialWidth * 2) / width;
+  		const ratioH = (this._initialHeight * 2) / height;
+  		let calculatedLogicalToPhysicalRatio = 1;
 
-          this._pixiRenderer.view.style.width = this._elementWidth + "px";
-          this._pixiRenderer.view.style.height = this._elementHeight + "px";
-      }
+  		if (ratioW > ratioH) {
+  			calculatedLogicalToPhysicalRatio = ratioW;
+  		} else {
+  			calculatedLogicalToPhysicalRatio = ratioH;
+  		}
 
-      /**
-       * Sets up the Local to physical ratio to scale the game
-       * This will never go over the window.devicePixelRatio
-       * This is set up to stop the canvas being drawn bigger than it needs to be
-       *
-       * @private
-       * @param {number} width - window width
-       * @param {number} height - window height
-       */
-      _setLogicalToPhysicalRatio(width, height) {
-          const ratioW = (this._initialWidth * 2) / width;
-          const ratioH = (this._initialHeight * 2) / height;
-          let calculatedLogicalToPhysicalRatio = 1;
+  		if (calculatedLogicalToPhysicalRatio > window.devicePixelRatio) {
+  			calculatedLogicalToPhysicalRatio = window.devicePixelRatio;
+  		}
 
-          if (ratioW > ratioH) {
-              calculatedLogicalToPhysicalRatio = ratioW;
-          }
-          else {
-              calculatedLogicalToPhysicalRatio = ratioH;
-          }
+  		this._logicalToPhysicalRatio = calculatedLogicalToPhysicalRatio;
+  	}
 
-          if (calculatedLogicalToPhysicalRatio > window.devicePixelRatio) {
-              calculatedLogicalToPhysicalRatio = window.devicePixelRatio;
-          }
+  	/**
+  	 * Calculates the timeDealtaMS when using our own requestAnimation event
+  	 *
+  	 * @private
+  	 * @param {DOMHighResTimeStamp} timeNow -
+  	 */
+  	_rafCalculateTimeDeltaMS() {
+  		const timeNow = window.performance.now();
+  		const timeDeltaMS = timeNow - this._lastTime;
 
-          this._logicalToPhysicalRatio = calculatedLogicalToPhysicalRatio;
-      }
+  		this._lastTime = timeNow;
 
+  		this._raf(timeDeltaMS);
+  	}
 
-      /**
-       * Calculates the timeDealtaMS when using our own requestAnimation event
-       *
-       * @private
-       * @param {DOMHighResTimeStamp} timeNow -
-       */
-      _rafCalculateTimeDeltaMS() {
-          const timeNow = window.performance.now();
-          const timeDeltaMS = (timeNow - this._lastTime);
+  	/**
+  	 * Fires event sending timeDeltas
+  	 *
+  	 * @private
+  	 * @param {number} timeDeltaMS -
+  	 */
+  	_raf(timeDeltaMS) {
+  		if (this._paused) {
+  			timeDeltaMS = 0;
+  		} else if (timeDeltaMS > this.TIME_DELTA_CAP) {
+  			timeDeltaMS = this.TIME_DELTA_CAP;
+  		}
 
-          this._lastTime = timeNow;
+  		this._checkForResize();
 
-          this._raf(timeDeltaMS);
-      }
+  		this._pixiRenderer.reset();
+  		this._pixiRenderer.render(this._pixi.stage);
+  	}
 
-      /**
-       * Fires event sending timeDeltas
-       *
-       * @private
-       * @param {number} timeDeltaMS -
-       */
-      _raf(timeDeltaMS) {
-          if (this._paused) {
-              timeDeltaMS = 0;
-          }
-          else if (timeDeltaMS > this.TIME_DELTA_CAP) {
-              timeDeltaMS = this.TIME_DELTA_CAP;
-          }
+  	/**
+  	 * Calculates scale of the canvas - called on a resize
+  	 *
+  	 * @private
+  	 * @param {number} currentCanvasWidth - width of the canvas (width * this._logicalToPhysicalRatio)
+  	 * @param {number} currentCanvasHeight - height of the canvas (height * this._logicalToPhysicalRatio)
+  	 */
+  	_calculateCanvasScale(currentCanvasWidth, currentCanvasHeight) {
+  		const ratioWidth = currentCanvasWidth / this._initialWidth;
+  		const ratioHeight = currentCanvasHeight / this._initialHeight;
+  		let scale = 1;
+  		let calculatedCanvasWidth = 0;
+  		let calculatedCanvasHeight = 0;
 
-          this._checkForResize();
-
-          this._pixiRenderer.reset();
-          this._pixiRenderer.render(this._pixi.stage);
-      }
-      
-      /**
-       * Calculates scale of the canvas - called on a resize
-       *
-       * @private
-       * @param {number} currentCanvasWidth - width of the canvas (width * this._logicalToPhysicalRatio)
-       * @param {number} currentCanvasHeight - height of the canvas (height * this._logicalToPhysicalRatio)
-       */
-      _calculateCanvasScale(currentCanvasWidth, currentCanvasHeight) {
-          const ratioWidth = currentCanvasWidth / this._initialWidth;
-          const ratioHeight = currentCanvasHeight / this._initialHeight;
-          let scale = 1;
-          let calculatedCanvasWidth = 0;
-          let calculatedCanvasHeight = 0;
-
-          if (ratioWidth > ratioHeight) {
-              scale = ratioHeight;
-              calculatedCanvasWidth = (this._initialWidth * ratioHeight);
-              calculatedCanvasHeight = (this._initialHeight * ratioHeight);
-          }
-          else {
-              scale = ratioWidth;
-              calculatedCanvasWidth = (this._initialWidth * ratioWidth);
-              calculatedCanvasHeight = (this._initialHeight * ratioWidth);
-          }
-          this._gameContainer.x = (currentCanvasWidth - calculatedCanvasWidth) * 0.5;
-          this._gameContainer.y = (currentCanvasHeight - calculatedCanvasHeight) * 0.5;
-          this._gameContainer.scale.x = scale;
-          this._gameContainer.scale.y = scale;
-      }
+  		if (ratioWidth > ratioHeight) {
+  			scale = ratioHeight;
+  			calculatedCanvasWidth = this._initialWidth * ratioHeight;
+  			calculatedCanvasHeight = this._initialHeight * ratioHeight;
+  		} else {
+  			scale = ratioWidth;
+  			calculatedCanvasWidth = this._initialWidth * ratioWidth;
+  			calculatedCanvasHeight = this._initialHeight * ratioWidth;
+  		}
+  		this._gameContainer.x = (currentCanvasWidth - calculatedCanvasWidth) * 0.5;
+  		this._gameContainer.y =
+  			(currentCanvasHeight - calculatedCanvasHeight) * 0.5;
+  		this._gameContainer.scale.x = scale;
+  		this._gameContainer.scale.y = scale;
+  	}
   }
 
   const renderer = new Renderer();
 
   /**
-   * 
+   *
    */
   class AssetLoader {
-      constructor() {
-          this._queue =[];
-      }
+  	constructor() {
+  		this._queue = [];
+  	}
 
-      /**
-       * add an asset to the queue of assets to load using PIXI
-       * 
-       * @param {*} asset - any asset we need to load 
-       */
-      addToQueue(asset) {
-          this._queue.push(asset);
-      }
+  	/**
+  	 * add an asset to the queue of assets to load using PIXI
+  	 *
+  	 * @param {*} asset - any asset we need to load
+  	 */
+  	addToQueue(asset) {
+  		this._queue.push(asset);
+  	}
 
-      /**
-       * lead all assets added to the queue and reset the to the queue
-       * 
-       * @async
-       */
-      async loadQueue() {
-          await Assets.load(this._queue);
-          this._queue.length = 0;
-      }
+  	/**
+  	 * lead all assets added to the queue and reset the to the queue
+  	 *
+  	 * @async
+  	 */
+  	async loadQueue() {
+  		await Assets.load(this._queue);
+  		this._queue.length = 0;
+  	}
   }
 
   const assetLoader = new AssetLoader();
 
   /**
    * Base class to add sin=mple getters and setters for classes that create PIXI object as this._native
-   * 
+   *
    * @class
    */
   class Base {
-      /**
-       * 
-       */
-      constructor() {
-          
-      }    
+  	/**
+  	 *
+  	 */
+  	constructor() {}
 
-      /**
-       * set the x parameter on the natiove pixi object
-       * @member
-       */
-      get x() {
-          return this._native.x;
-      }
-      set x(x) {
-          this._native.x = x;
-      }
-      
-      /**
-       * set the y parameter on the natiove pixi object
-       * @member
-       */
-      get y() {
-          return this._native.y;
-      }
-      set y(y) {
-          this._native.y = y;
-      }
+  	/**
+  	 * set the x parameter on the natiove pixi object
+  	 * @member
+  	 */
+  	get x() {
+  		return this._native.x;
+  	}
+  	set x(x) {
+  		this._native.x = x;
+  	}
 
-      /**
-       * get the base pixi object
-       * @member
-       * @readonly
-       */
-      get native() {
-          return this._native;
-      }
+  	/**
+  	 * set the y parameter on the natiove pixi object
+  	 * @member
+  	 */
+  	get y() {
+  		return this._native.y;
+  	}
+  	set y(y) {
+  		this._native.y = y;
+  	}
+
+  	/**
+  	 * get the base pixi object
+  	 * @member
+  	 * @readonly
+  	 */
+  	get native() {
+  		return this._native;
+  	}
   }
 
   /**
-   * Symbol 
-   * 
+   * Symbol
+   *
    * @class
    * @extends Base
    */
   let Symbol$1 = class Symbol extends Base {
-      /**
-       * 
-       * @param {number} id - id used for the symbols
-       * @param {string} name - name of the symbol asset
-       */
-      constructor(id, name) {
-          super();
-          this._create(id, name);
-      }
+  	/**
+  	 *
+  	 * @param {number} id - id used for the symbols
+  	 * @param {string} name - name of the symbol asset
+  	 */
+  	constructor(id, name) {
+  		super();
+  		this._create(id, name);
+  	}
 
-      /**
-       * Get the id of the symbol
-       * 
-       * @member
-       * @readonly
-       */
-      get id() {
-          return this._id;
-      }
+  	/**
+  	 * Get the id of the symbol
+  	 *
+  	 * @member
+  	 * @readonly
+  	 */
+  	get id() {
+  		return this._id;
+  	}
 
-      /**
-       * Play the symbol animation
-       * 
-       * @param {boolean} [loop=false] - loop the animation
-       */
-      play(loop=false) {        
-          this._native.loop = loop;
-          this._native.play();
-      }
-      
-      /**
-       * Stop the symbol animation
-       */
-      stop() {
-          this._native.stop();
-      }
+  	/**
+  	 * Play the symbol animation
+  	 *
+  	 * @param {boolean} [loop=false] - loop the animation
+  	 */
+  	play(loop = false) {
+  		this._native.loop = loop;
+  		this._native.play();
+  	}
 
-      /**
-       * Reset the symbol and remove from parent object
-       */
-      reset(){
-          this._native.parent.removeChild(this._native);       
-          this._native.x = 0;
-          this._native.y = 0;
-      }
+  	/**
+  	 * Stop the symbol animation
+  	 */
+  	stop() {
+  		this._native.stop();
+  	}
 
-      /**
-       * create the Symbol using base PIXI objects and loaded animations
-       * 
-       * @param {number} id - id used for the symbols
-       * @param {string} name - name of the symbol asset
-       * @private
-       */
-      _create(id, name) {
-          this._id = id;
-          this._name = name;
-          const animations = Assets.cache.get(this._name).data.animations;
-          this._native = AnimatedSprite.fromFrames(animations[`${this._name}Win`]);
-      }
+  	/**
+  	 * Reset the symbol and remove from parent object
+  	 */
+  	reset() {
+  		this._native.parent.removeChild(this._native);
+  		this._native.x = 0;
+  		this._native.y = 0;
+  	}
+
+  	/**
+  	 * create the Symbol using base PIXI objects and loaded animations
+  	 *
+  	 * @param {number} id - id used for the symbols
+  	 * @param {string} name - name of the symbol asset
+  	 * @private
+  	 */
+  	_create(id, name) {
+  		this._id = id;
+  		this._name = name;
+  		const animations = Assets.cache.get(this._name).data.animations;
+  		this._native = AnimatedSprite.fromFrames(
+  			animations[`${this._name}Win`],
+  		);
+  	}
   };
 
   /**
@@ -36294,135 +36327,134 @@ void main(void)\r
 
   /**
    * Symbol store used to create all symbols at initialisation for use through the game
-   * 
+   *
    * @class
    */
   class SymbolStore {
-      constructor() {
-          this._symbols = new Map();
-      }
+  	constructor() {
+  		this._symbols = new Map();
+  	}
 
-      /**
-       * 
-       * @param {Array.<SymbolObject>} symbolIds - Array of objects to create the symbols
-       * @param {number} reels - number of reels
-       * @param {number} rows - number of symbols in view
-       */
-      createSymbols(symbolIds, reels, rows) {
-          const maxSymbols = reels * rows;
+  	/**
+  	 *
+  	 * @param {Array.<SymbolObject>} symbolIds - Array of objects to create the symbols
+  	 * @param {number} reels - number of reels
+  	 * @param {number} rows - number of symbols in view
+  	 */
+  	createSymbols(symbolIds, reels, rows) {
+  		const maxSymbols = reels * rows;
 
-          for(let i = 0; i < symbolIds.length; i++) { 
-              const {id, name} = symbolIds[i];       
-              const symbols = [];
-              for(let j = 0; j < maxSymbols; j++) {
-                  symbols.push(new Symbol$1(id, name));
-              }
-              
-              this._symbols.set(id, symbols);
-          }
-      }
+  		for (let i = 0; i < symbolIds.length; i++) {
+  			const { id, name } = symbolIds[i];
+  			const symbols = [];
+  			for (let j = 0; j < maxSymbols; j++) {
+  				symbols.push(new Symbol$1(id, name));
+  			}
 
-      /**
-       * get a random symbol from the store
-       * 
-       * @returns {Symbol}
-       */
-      getRandomSymbol() {
-          const symbolId = Math.floor(Math.random() * this._symbols.size);
-          return this.getSymbol(symbolId);
-      }
+  			this._symbols.set(id, symbols);
+  		}
+  	}
 
-      /**
-       * get a specific symbol type based on id
-       * 
-       * @param {number} id - id of the symbol to retrieve
-       * @returns {Symbol}
-       */
-      getSymbol(id) {
-          if (this._symbols.has(id)) {
-              let symbol = this._symbols.get(id).pop();
-              return symbol;
-          }
-      }
+  	/**
+  	 * get a random symbol from the store
+  	 *
+  	 * @returns {Symbol}
+  	 */
+  	getRandomSymbol() {
+  		const symbolId = Math.floor(Math.random() * this._symbols.size);
+  		return this.getSymbol(symbolId);
+  	}
 
-      /**
-       * return a used symbol to the store ready for reuse
-       * 
-       * @param {Symbol} symbol - symbol to return to the store
-       */
-      returnSymbol(symbol) {
-          symbol.reset();
-          this._symbols.get(symbol.id).push(symbol);
-      }
+  	/**
+  	 * get a specific symbol type based on id
+  	 *
+  	 * @param {number} id - id of the symbol to retrieve
+  	 * @returns {Symbol}
+  	 */
+  	getSymbol(id) {
+  		if (this._symbols.has(id)) {
+  			const symbol = this._symbols.get(id).pop();
+  			return symbol;
+  		}
+  	}
+
+  	/**
+  	 * return a used symbol to the store ready for reuse
+  	 *
+  	 * @param {Symbol} symbol - symbol to return to the store
+  	 */
+  	returnSymbol(symbol) {
+  		symbol.reset();
+  		this._symbols.get(symbol.id).push(symbol);
+  	}
   }
 
   const symbolStore = new SymbolStore();
 
   const Easings = Object.freeze({
-      Linear: Power0,
-      Quad: Power1,
-      Cubic: Power2,
-      Quart: Power3,
-      Quint: Power4,
-      Back: Back,
-      Bounce: Bounce,
-      Elastic: Elastic,
-      Circ: Circ,
-      Expo: Expo,
-      Sine: Sine,
-      SlowMo: SlowMo,
-      Stepped: SteppedEase,
-      Rough: RoughEase
+  	Linear: Power0,
+  	Quad: Power1,
+  	Cubic: Power2,
+  	Quart: Power3,
+  	Quint: Power4,
+  	Back: Back,
+  	Bounce: Bounce,
+  	Elastic: Elastic,
+  	Circ: Circ,
+  	Expo: Expo,
+  	Sine: Sine,
+  	SlowMo: SlowMo,
+  	Stepped: SteppedEase,
+  	Rough: RoughEase,
   });
 
-
   class Tween {
-       /**
-       * Tween something to an end point
-       *
-       * @static
-       * @param {*} target - The thing we're tweening
-       * @param {number} duration - Time (in milliseconds) it takes to complete the tween
-       * @param {TweenMax.TweenConfig} [vars={}] - Additional tween settings
-       * @returns {TweenMax}
-       */
-       static to(target, duration, vars = {}) {
-          const tween = TweenMax.to(target, duration / 1000, vars);
-          tween.startPromise = async() => {
-              tween.invalidate();
-              await new Promise(resolve => {
-                  tween.vars.onComplete = () => {
-                      resolve();
-                  };
-                  tween.restart(true);
-              });
-          };
-          return tween;
-      }
+  	/**
+  	 * Tween something to an end point
+  	 *
+  	 * @static
+  	 * @param {*} target - The thing we're tweening
+  	 * @param {number} duration - Time (in milliseconds) it takes to complete the tween
+  	 * @param {TweenMax.TweenConfig} [vars={}] - Additional tween settings
+  	 * @returns {TweenMax}
+  	 */
+  	static to(target, duration, vars = {}) {
+  		const tween = TweenMax.to(target, duration / 1000, vars);
+  		tween.startPromise = async () => {
+  			tween.invalidate();
+  			await new Promise((resolve) => {
+  				tween.vars.onComplete = () => {
+  					resolve();
+  				};
+  				tween.restart(true);
+  			});
+  		};
+  		return tween;
+  	}
 
-      /**
-       * Tween something from a point to another
-       *
-       * @static
-       * @param {*} target - The thing we're tweening
-       * @param {number} duration - Time (in milliseconds) it takes to complete the tween
-       * @param {TweenMax.TweenConfig} [fromVars={}] - Additional tween settings
-       * @param {TweenMax.TweenConfig} [toVars={}] - Additional tween settings
-       * @returns {TweenMax}
-       */
-      static fromTo(target, duration, fromVars = {}, toVars = {}) {
-          const tween = TweenMax.fromTo(target, duration / 1000, fromVars, toVars);
-          tween.startPromise = async() => {
-              tween.invalidate();
-              await new Promise(resolve => {
-                  tween.vars.onComplete = () => {
-                      resolve();
-                  };
-                  tween.restart(true);
-              });
-          };
-          return tween;
-      }
+  	/**
+  	 * Tween something from a point to another
+  	 *
+  	 * @static
+  	 * @param {*} target - The thing we're tweening
+  	 * @param {number} duration - Time (in milliseconds) it takes to complete the tween
+  	 * @param {TweenMax.TweenConfig} [fromVars={}] - Additional tween settings
+  	 * @param {TweenMax.TweenConfig} [toVars={}] - Additional tween settings
+  	 * @returns {TweenMax}
+  	 */
+  	static fromTo(target, duration, fromVars = {}, toVars = {}) {
+  		const tween = TweenMax.fromTo(target, duration / 1000, fromVars, toVars);
+  		tween.startPromise = async () => {
+  			tween.invalidate();
+  			await new Promise((resolve) => {
+  				tween.vars.onComplete = () => {
+  					resolve();
+  				};
+  				tween.restart(true);
+  			});
+  		};
+  		return tween;
+  	}
   }
 
   /**
@@ -36430,477 +36462,531 @@ void main(void)\r
    * @class
    */
   class Reel extends Base {
-      /**
-       * 
-       * @param {number} numberOfSymbols - number of symbols in view on the reel
-       * @param {number} symbolHeight - height of each symbol
-       */
-      constructor(numberOfSymbols, symbolHeight) {
-          super();
-          this._symbolsInView = numberOfSymbols;
-          this._symbolHeight = symbolHeight;
-          this._symbols = [];
-          this._spinning = false;
-          this._spinningSpeed = 0;
-          this._create();
-      }
+  	/**
+  	 *
+  	 * @param {number} numberOfSymbols - number of symbols in view on the reel
+  	 * @param {number} symbolHeight - height of each symbol
+  	 */
+  	constructor(numberOfSymbols, symbolHeight) {
+  		super();
+  		this._symbolsInView = numberOfSymbols;
+  		this._symbolHeight = symbolHeight;
+  		this._symbols = [];
+  		this._spinning = false;
+  		this._spinningSpeed = 0;
+  		this._create();
+  	}
 
-      /**
-       * Start the reels spinning
-       * 
-       * @async
-       */
-      async startSpin() {
-          if(this._spinning) {
-              return;
-          }
-          this._spinning = true;
-          this._createNextSymbol();
-          
-          Tween.fromTo(this, 1000, {_spinningSpeed: 0, ease: Easings.Back.easeIn}, {_spinningSpeed: 10}).startPromise();
+  	/**
+  	 * Start the reels spinning
+  	 *
+  	 * @async
+  	 */
+  	async startSpin() {
+  		if (this._spinning) {
+  			return;
+  		}
+  		this._spinning = true;
+  		this._createNextSymbol();
 
-      }
+  		Tween.fromTo(
+  			this,
+  			1000,
+  			{ _spinningSpeed: 0, ease: Easings.Back.easeIn },
+  			{ _spinningSpeed: 10 },
+  		).startPromise();
+  	}
 
-      /**
-       * Start stopping the reel from spinning
-       * 
-       * @async
-       */
-      async stopSpin() {
-          this._stopping = true;        
-          return new Promise(resolve => {
-              this._resolve = resolve;
-          })
-      }
+  	/**
+  	 * Start stopping the reel from spinning
+  	 *
+  	 * @async
+  	 */
+  	async stopSpin() {
+  		this._stopping = true;
+  		return new Promise((resolve) => {
+  			this._resolve = resolve;
+  		});
+  	}
 
-      /**
-       * Tween reels to the final position and respone promise from stopSpin()
-       * 
-       * @async
-       */
-      async stop() {
-          await Tween.fromTo(this._native, 750, {y: 0, ease: Easings.Back.easeOut}, {y: this._symbolHeight}).startPromise();
-          this._native.y = 0;
-          const symbol = this._symbols.pop();
-          symbolStore.returnSymbol(symbol);
-          this._repositionSymbols();
-          this._resolve();
-      }
+  	/**
+  	 * Tween reels to the final position and respone promise from stopSpin()
+  	 *
+  	 * @async
+  	 */
+  	async stop() {
+  		await Tween.fromTo(
+  			this._native,
+  			750,
+  			{ y: 0, ease: Easings.Back.easeOut },
+  			{ y: this._symbolHeight },
+  		).startPromise();
+  		this._native.y = 0;
+  		const symbol = this._symbols.pop();
+  		symbolStore.returnSymbol(symbol);
+  		this._repositionSymbols();
+  		this._resolve();
+  	}
 
-      /**
-       * reset all symbols to the correct positions
-       */
-      _repositionSymbols() {
-          const paddingTop = this._symbols.length === this._symbolsInView + 2 ? 1 : 2;
-          this._symbols.forEach((symbol, index) => symbol.y = (this._symbolHeight*index) - (this._symbolHeight*paddingTop));
-      }
+  	/**
+  	 * reset all symbols to the correct positions
+  	 */
+  	_repositionSymbols() {
+  		const paddingTop = this._symbols.length === this._symbolsInView + 2 ? 1 : 2;
+  		this._symbols.forEach(
+  			(symbol, index) =>
+  				(symbol.y =
+  					this._symbolHeight * index - this._symbolHeight * paddingTop),
+  		);
+  	}
 
-      /**
-       * Create the reel using PIXI container and initial symbols
-       * 
-       * @private
-       */
-      _create() {
-          this._native = new Container("reel");
-          const totalHeight = this._symbolHeight * (this._symbolsInView);
-          for (let i = 0; i < this._symbolsInView + 2; i++) { // adding symbol before and after to hide creation and removal of symbols
-              const symbol = symbolStore.getRandomSymbol();
-              symbol.y = totalHeight - (i * this._symbolHeight);
-              this._native.addChild(symbol.native);
-              this._symbols.unshift(symbol);
-          }
-          renderer.app.ticker.add(() => {
-              this._update(renderer.app.ticker.elapsedMS);
-          });
-      }
+  	/**
+  	 * Create the reel using PIXI container and initial symbols
+  	 *
+  	 * @private
+  	 */
+  	_create() {
+  		this._native = new Container("reel");
+  		const totalHeight = this._symbolHeight * this._symbolsInView;
+  		for (let i = 0; i < this._symbolsInView + 2; i++) {
+  			// adding symbol before and after to hide creation and removal of symbols
+  			const symbol = symbolStore.getRandomSymbol();
+  			symbol.y = totalHeight - i * this._symbolHeight;
+  			this._native.addChild(symbol.native);
+  			this._symbols.unshift(symbol);
+  		}
+  		renderer.app.ticker.add(() => {
+  			this._update(renderer.app.ticker.elapsedMS);
+  		});
+  	}
 
-      /**
-       * create the next symbol to spin through te appature either random or a specific id
-       * 
-       * @param {number} [symbolId=null] - Symbol id to generate
-       * @private
-       */
-      _createNextSymbol(symbolId=null) {
-          const symbol = symbolId === null ? symbolStore.getRandomSymbol() : symbolStore.getSymbol(symbolId);
-          symbol.y = this._symbols[0].native.y-this._symbolHeight;
-          this._native.addChild(symbol.native);
-          this._symbols.unshift(symbol);
-      }
+  	/**
+  	 * create the next symbol to spin through te appature either random or a specific id
+  	 *
+  	 * @param {number} [symbolId=null] - Symbol id to generate
+  	 * @private
+  	 */
+  	_createNextSymbol(symbolId = null) {
+  		const symbol =
+  			symbolId === null
+  				? symbolStore.getRandomSymbol()
+  				: symbolStore.getSymbol(symbolId);
+  		symbol.y = this._symbols[0].native.y - this._symbolHeight;
+  		this._native.addChild(symbol.native);
+  		this._symbols.unshift(symbol);
+  	}
 
-      /**
-       * Update called each frame
-       * 
-       * @async
-       * @private 
-       */
-      async _update() {
-          if(!this._spinning) {
-              return;
-          }
-          this._symbols.forEach(symbol => {
-              symbol.native.y += this._spinningSpeed;
-          });
+  	/**
+  	 * Update called each frame
+  	 *
+  	 * @async
+  	 * @private
+  	 */
+  	async _update() {
+  		if (!this._spinning) {
+  			return;
+  		}
+  		this._symbols.forEach((symbol) => {
+  			symbol.native.y += this._spinningSpeed;
+  		});
 
-          if (this._symbols[0].native.y >= -this._symbolHeight ) {
-              this._createNextSymbol();
-              const symbol = this._symbols.pop();
-              symbolStore.returnSymbol(symbol);
-              if (this._stopping) {
-                  this._stopping = false;
-                  this._spinning = false;
-                  this._repositionSymbols();             
-                  this.stop();
-              }
-          }
-      }
+  		if (this._symbols[0].native.y >= -this._symbolHeight) {
+  			this._createNextSymbol();
+  			const symbol = this._symbols.pop();
+  			symbolStore.returnSymbol(symbol);
+  			if (this._stopping) {
+  				this._stopping = false;
+  				this._spinning = false;
+  				this._repositionSymbols();
+  				this.stop();
+  			}
+  		}
+  	}
   }
 
   /**
-   * simple timer class 
-   * 
+   * simple timer class
+   *
    * @class
    */
   class Timer {
-      /**
-       * 
-       * @param {number} delay - number of millisectonds to wait before completing
-       * @param {function} callback - call back function to call when timer is finished
-       */
-      constructor(delay, callback) {
-          this._delay = delay;
-          this._count = 0;
-          this._callback = callback;
+  	/**
+  	 *
+  	 * @param {number} delay - number of millisectonds to wait before completing
+  	 * @param {function} callback - call back function to call when timer is finished
+  	 */
+  	constructor(delay, callback) {
+  		this._delay = delay;
+  		this._count = 0;
+  		this._callback = callback;
+  	}
 
-      }
-
-      /**
-       * update called each frame
-       * 
-       * @param {number} delta - number of milliseconds since last update
-       * @returns {boolean}
-       */
-      update(delta) {
-          this._count += delta;
-          if(this._count >= this._delay) {
-              this._callback();
-              return true;
-          }
-          else {
-              return false;
-          }
-      }
+  	/**
+  	 * update called each frame
+  	 *
+  	 * @param {number} delta - number of milliseconds since last update
+  	 * @returns {boolean}
+  	 */
+  	update(delta) {
+  		this._count += delta;
+  		if (this._count >= this._delay) {
+  			this._callback();
+  			return true;
+  		} else {
+  			return false;
+  		}
+  	}
   }
 
   /**
-   * timer manager creates and manages any timers 
-   * 
+   * timer manager creates and manages any timers
+   *
    * @class
    */
   class TimerManager {
-      constructor() {
-          this._masterTime = 0;
-          this._timers = [];
-          
-      }
-      
-      /**
-       * links timer manager to pixi ticker updates
-       */
-      init() {
-          renderer.app.ticker.add(() => {            this._onUpdate(renderer.app.ticker.elapsedMS);
-          });
-      }
+  	constructor() {
+  		this._masterTime = 0;
+  		this._timers = [];
+  	}
 
-      /**
-       * Start an awaitable timer
-       * 
-       * @param {number} delay - delay in milliseconds
-       * @async
-       */
-      async startTimer(delay) {
-          const promise = new Promise((resolve) => {
-              const timer = new Timer(delay, resolve);
-              this._timers.push(timer);
-          });
+  	/**
+  	 * links timer manager to pixi ticker updates
+  	 */
+  	init() {
+  		renderer.app.ticker.add(() => {
+  			this._onUpdate(renderer.app.ticker.elapsedMS);
+  		});
+  	}
 
-          return promise;
-      }
+  	/**
+  	 * Start an awaitable timer
+  	 *
+  	 * @param {number} delay - delay in milliseconds
+  	 * @async
+  	 */
+  	async startTimer(delay) {
+  		const promise = new Promise((resolve) => {
+  			const timer = new Timer(delay, resolve);
+  			this._timers.push(timer);
+  		});
 
-      /**
-       * update called every frame
-       * 
-       * @param {number} delta - number of milliseconds since last update call
-       * @private
-       */
-      _onUpdate(delta) {
+  		return promise;
+  	}
 
-          const ms = delta / settings.TARGET_FPMS;
-          this._masterTime += ms;
+  	/**
+  	 * update called every frame
+  	 *
+  	 * @param {number} delta - number of milliseconds since last update call
+  	 * @private
+  	 */
+  	_onUpdate(delta) {
+  		const ms = delta / settings.TARGET_FPMS;
+  		this._masterTime += ms;
 
-          for (let i = this._timers.length - 1; i >= 0; i--) {
-              const timer = this._timers[i];
+  		for (let i = this._timers.length - 1; i >= 0; i--) {
+  			const timer = this._timers[i];
 
-              if (timer.update(delta)) {
-                  this._timers.splice(i, 1);
-              }
-          }
-      }
+  			if (timer.update(delta)) {
+  				this._timers.splice(i, 1);
+  			}
+  		}
+  	}
   }
 
   const timerManager = new TimerManager();
 
   /**
-   * Reel manager controls multipler reels 
-   * 
+   * Reel manager controls multipler reels
+   *
    * @class
    */
   class ReelManager extends Base {
-      /**
-       * 
-       * @param {number} numberOfReels - number of reel instanses to create
-       * @param {number} symbolsPerReel - number of reels in view for each reel created
-       * @param {number} reelWidth - width of each reel to position created reels correctly
-       * @param {number} symbolHeight - height of each symbol
-       */
-      constructor(numberOfReels, symbolsPerReel, reelWidth, symbolHeight) {
-          super();
-          this._numberOfReels = numberOfReels;
-          this._symbolsPerReel = symbolsPerReel;
-          this._reelWidth = reelWidth;
-          this._symbolHeight = symbolHeight;
-          this._reels = [];
-          this._create();
-      }
+  	/**
+  	 *
+  	 * @param {number} numberOfReels - number of reel instanses to create
+  	 * @param {number} symbolsPerReel - number of reels in view for each reel created
+  	 * @param {number} reelWidth - width of each reel to position created reels correctly
+  	 * @param {number} symbolHeight - height of each symbol
+  	 */
+  	constructor(numberOfReels, symbolsPerReel, reelWidth, symbolHeight) {
+  		super();
+  		this._numberOfReels = numberOfReels;
+  		this._symbolsPerReel = symbolsPerReel;
+  		this._reelWidth = reelWidth;
+  		this._symbolHeight = symbolHeight;
+  		this._reels = [];
+  		this._create();
+  	}
 
-      /**
-       * Start the reels spinning called when button is clicked
-       */
-      startSpin() {
-          if (this._spinning) {
-              return;
-          }
-          this._spinning = true;
-          this._reels.forEach(reel => {
-              reel.startSpin();
-          });
-         
-      }
+  	/**
+  	 * Start the reels spinning called when button is clicked
+  	 */
+  	startSpin() {
+  		if (this._spinning) {
+  			return;
+  		}
+  		this._spinning = true;
+  		this._reels.forEach((reel) => {
+  			reel.startSpin();
+  		});
+  	}
 
-      /**
-       * Stop the reels spinning
-       * 
-       * @async
-       */
-      async stopSpin() {
-          if (!this._spinning) {
-              return;
-          }
-          this._promises = [];
-          this._promises.push(this._reels[0].stopSpin());
-          await timerManager.startTimer(250);
-          this._promises.push(this._reels[1].stopSpin());
-          await timerManager.startTimer(250);
-          this._promises.push(this._reels[2].stopSpin());
-          
-          await Promise.all(this._promises);
-          
-          this._spinning = false;
-      }
+  	/**
+  	 * Stop the reels spinning
+  	 *
+  	 * @async
+  	 */
+  	async stopSpin() {
+  		if (!this._spinning) {
+  			return;
+  		}
+  		this._promises = [];
+  		this._promises.push(this._reels[0].stopSpin());
+  		await timerManager.startTimer(250);
+  		this._promises.push(this._reels[1].stopSpin());
+  		await timerManager.startTimer(250);
+  		this._promises.push(this._reels[2].stopSpin());
 
-      /**
-       * Create the reelManager using PIXI container and required reel instances
-       * 
-       * @private
-       */
-      _create() {
-          this._native = new Container("reelManager");
-          this._native.x = 314;
-          this._native.y = 80;
-          this._createMask();
-          this._createReels();
-      }
+  		await Promise.all(this._promises);
 
-      /**
-       * create reel mask to hide padding (out of view) symbols
-       * 
-       * @private
-       */
-      _createMask() {
-          this._mask = Sprite.from("mask");
-          this._mask.y = 23;
-          this._mask.scale.x = 2.3;
-          this._mask.scale.y = 2.7;
-          this._native.addChild(this._mask);
-          this._native.mask = this._mask;
-      }
+  		this._spinning = false;
+  	}
 
-      /**
-       * Create reels
-       * 
-       * @private
-       */
-      _createReels() {
-          for(let i = 0; i < this._numberOfReels; i++ ) {
-              const reel = new Reel(this._symbolsPerReel, this._symbolHeight);
-              reel.x = i * this._reelWidth;
-              this._native.addChild(reel.native);
-              this._reels.push(reel);
-          }
-      }
+  	/**
+  	 * Create the reelManager using PIXI container and required reel instances
+  	 *
+  	 * @private
+  	 */
+  	_create() {
+  		this._native = new Container("reelManager");
+  		this._native.x = 314;
+  		this._native.y = 80;
+  		this._createMask();
+  		this._createReels();
+  	}
+
+  	/**
+  	 * create reel mask to hide padding (out of view) symbols
+  	 *
+  	 * @private
+  	 */
+  	_createMask() {
+  		this._mask = Sprite.from("mask");
+  		this._mask.y = 23;
+  		this._mask.scale.x = 2.3;
+  		this._mask.scale.y = 2.7;
+  		this._native.addChild(this._mask);
+  		this._native.mask = this._mask;
+  	}
+
+  	/**
+  	 * Create reels
+  	 *
+  	 * @private
+  	 */
+  	_createReels() {
+  		for (let i = 0; i < this._numberOfReels; i++) {
+  			const reel = new Reel(this._symbolsPerReel, this._symbolHeight);
+  			reel.x = i * this._reelWidth;
+  			this._native.addChild(reel.native);
+  			this._reels.push(reel);
+  		}
+  	}
   }
 
   /**
    * Basic button class creates a sprite object and adds interaction callback
-   * 
+   *
    * @class
    */
   class Button extends Base {
-      /**
-       * 
-       * @param {string} image - image name or alias from assets already loaded
-       * @param {function} onClick - call back function when clicked
-       */
-      constructor(image, onClick) {
-          super();
-          this._create(image, onClick);
-      }
+  	/**
+  	 *
+  	 * @param {string} image - image name or alias from assets already loaded
+  	 * @param {function} onClick - call back function when clicked
+  	 */
+  	constructor(image, onClick) {
+  		super();
+  		this._create(image, onClick);
+  	}
 
-      /**
-       * create the button object
-       * 
-       * @param {string} image - image name or alias from assets already loaded
-       * @param {function} onClick - call back function when clicked
-       * @private
-       */
-      _create(image, onClick) {
-          this._native = Sprite.from(image);
-          this._native.eventMode = 'static';
-          this._native.cursor = 'pointer';
-          this._native.addListener('pointerdown', () =>{
-              onClick();
-          });
-      }
-
+  	/**
+  	 * create the button object
+  	 *
+  	 * @param {string} image - image name or alias from assets already loaded
+  	 * @param {function} onClick - call back function when clicked
+  	 * @private
+  	 */
+  	_create(image, onClick) {
+  		this._native = Sprite.from(image);
+  		this._native.eventMode = "static";
+  		this._native.cursor = "pointer";
+  		this._native.addListener("pointerdown", () => {
+  			onClick();
+  		});
+  	}
   }
 
   /**
    * Base entry point for the game
-   * 
+   *
    * @class
    */
   class Core {
-      constructor() {        
-          this._create();
-      }
+  	constructor() {
+  		this._create();
+  	}
 
-      /**
-       * load all assets required for the game
-       * 
-       * @async
-       */
-      async loadAssets() {
-          assetLoader.addToQueue({ alias: 'background', src: "./resource/@2x/gameBG_opt.png"});
-          assetLoader.addToQueue({ alias: 'cloud1', src: "./resource/@2x/cloud1_opt.png"});
-          assetLoader.addToQueue({ alias: 'cloud2', src: "./resource/@2x/cloud2_opt.png"});
-          assetLoader.addToQueue({ alias: 'mask', src: "./resource/@2x/mask_opt.jpg"});
-          assetLoader.addToQueue({ alias: 'reelSquare', src: "./resource/@2x/reelSquare.png"});
-          assetLoader.addToQueue({ src: "./resource/@2x/controlPanel0_opt.json"});
-          assetLoader.addToQueue({ alias: 'ace', src: "./resource/@2x/symbols/aceWin0_opt.json"});
-          assetLoader.addToQueue({ alias: 'h2', src: "./resource/@2x/symbols/h2Win0_opt.json"});
-          assetLoader.addToQueue({ alias: 'h3', src: "./resource/@2x/symbols/h3Win0_opt.json"});
-          assetLoader.addToQueue({ alias: 'h4', src: "./resource/@2x/symbols/h4Win0_opt.json"});
-          assetLoader.addToQueue({ alias: 'jack', src: "./resource/@2x/symbols/jackWin0_opt.json"});
-          assetLoader.addToQueue({ alias: 'king', src: "./resource/@2x/symbols/kingWin0_opt.json"});
-          assetLoader.addToQueue({ alias: 'nine', src: "./resource/@2x/symbols/nineWin0_opt.json"});
-          assetLoader.addToQueue({ alias: 'queen', src: "./resource/@2x/symbols/queenWin0_opt.json"});
-          assetLoader.addToQueue({ alias: 'ten', src: "./resource/@2x/symbols/tenWin0_opt.json"});
-          await assetLoader.loadQueue();
-      }
+  	/**
+  	 * load all assets required for the game
+  	 *
+  	 * @async
+  	 */
+  	async loadAssets() {
+  		assetLoader.addToQueue({
+  			alias: "background",
+  			src: "./resource/@2x/gameBG_opt.png",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "cloud1",
+  			src: "./resource/@2x/cloud1_opt.png",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "cloud2",
+  			src: "./resource/@2x/cloud2_opt.png",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "mask",
+  			src: "./resource/@2x/mask_opt.jpg",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "reelSquare",
+  			src: "./resource/@2x/reelSquare.png",
+  		});
+  		assetLoader.addToQueue({ src: "./resource/@2x/controlPanel0_opt.json" });
+  		assetLoader.addToQueue({
+  			alias: "ace",
+  			src: "./resource/@2x/symbols/aceWin0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "h2",
+  			src: "./resource/@2x/symbols/h2Win0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "h3",
+  			src: "./resource/@2x/symbols/h3Win0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "h4",
+  			src: "./resource/@2x/symbols/h4Win0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "jack",
+  			src: "./resource/@2x/symbols/jackWin0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "king",
+  			src: "./resource/@2x/symbols/kingWin0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "nine",
+  			src: "./resource/@2x/symbols/nineWin0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "queen",
+  			src: "./resource/@2x/symbols/queenWin0_opt.json",
+  		});
+  		assetLoader.addToQueue({
+  			alias: "ten",
+  			src: "./resource/@2x/symbols/tenWin0_opt.json",
+  		});
+  		await assetLoader.loadQueue();
+  	}
 
-      /**
-       * Create the renderer instance and initialise everything ready to play the game
-       * 
-       * @async
-       * @private
-       */
-      async _create() {
-          renderer.initialise({
-              antialias: false,
-              backgroundAlpha: 1,
-              backgroundColour: '#000000',
-              gameContainerDiv: document.getElementById("gameContainer"),
-              width: 1024,
-              height: 576
-          });
-          renderer.start();
-          timerManager.init();
-          await this.loadAssets();
-          this._createObjects(); 
-      }
+  	/**
+  	 * Create the renderer instance and initialise everything ready to play the game
+  	 *
+  	 * @async
+  	 * @private
+  	 */
+  	async _create() {
+  		renderer.initialise({
+  			antialias: false,
+  			backgroundAlpha: 1,
+  			backgroundColour: "#000000",
+  			gameContainerDiv: document.getElementById("gameContainer"),
+  			width: 1024,
+  			height: 576,
+  		});
+  		renderer.start();
+  		timerManager.init();
+  		await this.loadAssets();
+  		this._createObjects();
+  	}
 
-      /**
-       * Create all game objecs ready to use
-       * 
-       * @async
-       * @private
-       */
-      async _createObjects() {
+  	/**
+  	 * Create all game objecs ready to use
+  	 *
+  	 * @async
+  	 * @private
+  	 */
+  	async _createObjects() {
+  		const graphics = new Graphics();
+  		graphics.beginFill(0x1099bb);
+  		graphics.drawRect(0, 0, 1024, 300);
+  		graphics.endFill();
+  		renderer.addChild(graphics);
 
-          const graphics = new Graphics();
-          graphics.beginFill(0x1099bb);
-          graphics.drawRect(0, 0, 1024, 300);
-          graphics.endFill();
-          renderer.addChild(graphics);
+  		const background = Sprite.from("background");
+  		renderer.addChild(background);
 
-          const background = Sprite.from("background");
-          renderer.addChild(background);
+  		symbolStore.createSymbols(
+  			[
+  				{ id: 0, name: "h2" },
+  				{ id: 1, name: "h3" },
+  				{ id: 2, name: "h4" },
+  				{ id: 3, name: "ace" },
+  				{ id: 4, name: "king" },
+  				{ id: 5, name: "queen" },
+  				{ id: 6, name: "jack" },
+  				{ id: 7, name: "ten" },
+  				{ id: 8, name: "nine" },
+  			],
+  			3,
+  			3,
+  		);
 
-          symbolStore.createSymbols([
-              {id: 0, name: "h2"},
-              {id: 1, name: "h3"},
-              {id: 2, name: "h4"},
-              {id: 3, name: "ace"},
-              {id: 4, name: "king"},
-              {id: 5, name: "queen"},
-              {id: 6, name: "jack"},
-              {id: 7, name: "ten"},
-              {id: 8, name: "nine"}
-          ],
-          3,
-          3);
+  		const container = new Container("reelSquares");
+  		container.x = 324;
+  		container.y = 95;
+  		renderer.addChild(container);
+  		let width = 125;
+  		let height = 105;
+  		for (let i = 0; i < 3; i++) {
+  			for (let j = 0; j < 3; j++) {
+  				const symbolBack = Sprite.from("reelSquare");
+  				container.addChild(symbolBack);
+  				symbolBack.x = i * width;
+  				symbolBack.y = j * height;
+  			}
+  		}
 
-          const container = new Container("reelSquares");
-          container.x = 324;
-          container.y = 95;
-          renderer.addChild(container);
-          let width = 125;
-          let height = 105;
-          for (let i = 0; i < 3; i++) {
-              for( let j = 0; j < 3; j++) {
-                  const symbolBack = Sprite.from("reelSquare");
-                  container.addChild(symbolBack);
-                  symbolBack.x = i * width;
-                  symbolBack.y = j * height;
-              }
-          }
+  		this._reelManager = new ReelManager(3, 3, 125, 105);
+  		renderer.addChild(this._reelManager.native);
 
-          this._reelManager = new ReelManager(3, 3, 125, 105);
-          renderer.addChild(this._reelManager.native);
-
-          const button = new Button("playActive", async() => {
-              this._reelManager.startSpin();            
-              await timerManager.startTimer(2000);
-              this._reelManager.stopSpin();    
-          });
-          button.x = 475;
-          button.y = 440;
-          renderer.addChild(button.native);
-
-      }
+  		const button = new Button("playActive", async () => {
+  			this._reelManager.startSpin();
+  			await timerManager.startTimer(2000);
+  			this._reelManager.stopSpin();
+  		});
+  		button.x = 475;
+  		button.y = 440;
+  		renderer.addChild(button.native);
+  	}
   }
 
   window.startup = () => {
-      new Core();
+  	new Core();
   };
 
 })();

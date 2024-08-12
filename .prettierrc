@@ -1,0 +1,10 @@
+{
+  "endOfLine": "crlf",
+  "tabWidth": 2,
+  "useTabs": true,
+  "semi": true,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "jsxBracketSameLine": false,
+  "printWidth": 80
+}

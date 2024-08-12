@@ -43,17 +43,6 @@
             {
                 "properties": "always"
             }
-        ],
-        "prettier/prettier": ["error", {
-            "printWidth": 80,
-            "tabWidth": 2,
-            "singleQuote": true,
-            "trailingComma": "all",
-            "bracketSpacing": true,
-            "jsxBracketSameLine": false,
-            "semi": true,
-            "useTabs": false,
-            "endOfLine": "lf"
-        }]
+        ]
     }
 }
