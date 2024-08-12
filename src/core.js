@@ -4,7 +4,7 @@ import * as PIXI from "pixi.js";
 import { symbolStore } from "./reels/symbolStore.js";
 import { ReelManager } from "./reels/reelsManager.js";
 import { timerManager } from "./utils/timermanager.js";
-import { Button } from "./button.js";
+import { Button } from "./components/button.js";
 
 /**
  * Base entry point for the game
@@ -154,9 +154,13 @@ class Core {
 		renderer.addChild(this._reelManager.native);
 
 		const button = new Button("playActive", async () => {
+			button.disable();
+			button.setTexture("playNonactive");
 			this._reelManager.startSpin();
 			await timerManager.startTimer(2000);
 			this._reelManager.stopSpin();
+			button.setTexture("playActive");
+			button.enable();
 		});
 		button.x = 475;
 		button.y = 440;
