@@ -30,7 +30,7 @@ export class Symbol extends Base {
   }
 
   /**
-   * Get the id of the symbol
+   * Get the value of the symbol
    *
    * @member
    * @readonly
